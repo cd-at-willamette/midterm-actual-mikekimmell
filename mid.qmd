@@ -135,14 +135,15 @@ test_bin <- auto_bin[-split2, ]
 
 weight_train <- train_bin %>% 
   mutate(weights=case_when(
-    honda == 1 ~ 29.15,
-    honda == 0 ~ 1))
+    honda == TRUE ~ 29.15,
+    honda == FALSE ~ 1))
 
 fit_bin = train(honda ~ .,
                data = train_bin, 
                method = "glm",
                family = "binomial",
-               trControl = control)
+               trControl = control,
+               weights = weight_train$weights)
 
 confusionMatrix(predict(fit_bin, test_bin),factor(test_bin$honda))
 
@@ -154,5 +155,5 @@ myRoc <- roc(test_bin$honda, prob)
 plot(myRoc)
 ```
 
-> As with our KNN model, I believe I've once again stumbled on dubious results. While this dataset is certainly larger (since we didn't filter down), it still only has 400 observations. Of which, only 13 belong to Honda vehicles. The imbalance of the data makes it extremely hard to ensure that there are enough Hondas in the training and test datasets to produce meaningful results. More often than not, I get a Kappa value of 0, which often happens because I only have ~2 Honda observations in my test dataset to guess correctly. Looking at the ROC curve, we almost always see greater than 90% of the data represented under the curve. It's extremely easy to do so when virtually every observation is in one of the two buckets. Since the release of this dataset, the automotive industry has expanded massively. Running these models over a more complete dataset, with thousands more observations would likely produce more reliable RMSEs, Kappa values, and ROC curves (rather than ROC staircases).
+> As with our KNN model, I believe I've once again stumbled on dubious results. While this dataset is certainly larger (since we didn't filter down), it still only has 400 observations. Of which, only 13 belong to Honda vehicles. The imbalance of the data makes it extremely hard to ensure that there are enough Hondas in the training and test datasets to produce meaningful results. Even with signficant weight penalties, more often than not, I get a Kappa value of 0, which often happens because I only have ~2 Honda observations in my test dataset to guess correctly. Looking at the ROC curve, we almost always see greater than 90% of the data represented under the curve. It's extremely easy to do so when virtually every observation is in one of the two buckets. Since the release of this dataset, the automotive industry has expanded massively. Running these models over a more complete dataset, with thousands more observations would likely produce more reliable RMSEs, Kappa values, and ROC curves (rather than ROC staircases).
 
