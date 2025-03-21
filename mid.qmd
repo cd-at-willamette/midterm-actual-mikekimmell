@@ -1,16 +1,10 @@
 ---
 title: "Characterizing Automobiles"
-author: "Your Name Here"
-date: "03/17/2025"
+author: "Mike Kimmell"
+date: "03/20/2025"
 
 format: 
-  html:  # You will quite likely want to change all but the last one, to taste
-    theme:
-        light: flatly
-        dark: darkly
-    mainfont: monospace
-    highlight-style: github
-    title-block-banner: true
+  html:
     embed-resources: true
 
 ---
@@ -25,7 +19,8 @@ sh(library(tidyverse))
 sh(library(caret))
 sh(library(fastDummies))
 sh(library(class))
-sh(library(ISLR)) # for the "Auto" dataframe
+sh(library(ISLR)) # for the "Auto" dataframe\
+sh(library(pROC)) # for ROC
 ```
 
 # Dataframe
@@ -48,10 +43,21 @@ names(Auto)
 - Compute and comment on the RMSE.
 
 ```{r regression}
-# Your code here
+m1 = lm(mpg ~ horsepower, Auto)
+m2 = lm(mpg ~ year, Auto)
+m3 = lm(mpg ~ horsepower + year, Auto)
+m4 = lm(mpg ~ horsepower * year, Auto)
+m5 = lm(mpg ~ ., Auto)
+
+get_rmse <- function(m) {
+    pred <- predict(m, newdata = Auto)
+    sqrt(mean((Auto$mpg - pred)^2))
+}
+
+unlist(lapply(list(m1, m2, m3, m4, m5), get_rmse))
 ```
 
-> <span style="color:red;font-weight:bold">TODO</span>: *Explain*
+> In this dataset, our mpg field has a minimum of 9 and a maximum of 46, giving us a range of only 37 mpg. Model 2, which goes off only the Year feature, has an RMSE of ~6, which means that we have almost 16% error in our prediction. I would consider this an unacceptably high RMSE for the data we are looking at. Model 4 comes closer to describing the data with an RMSE of ~4, which is still not great. Ultimately, a model that looks at all the available data, Model 5, is only off by about 1 mpg, which I would argue is pretty darn good.
 
 # Feature Engineering
 
@@ -61,10 +67,25 @@ names(Auto)
 - Compute and comment on the RMSE.
 
 ```{r features}
-# Your code here
+auto_all <- Auto %>% #Let's make some dummy variables using 'Make's
+  mutate(amc = str_detect(name,"amc")) %>%
+  mutate(buick = str_detect(name,"buick")) %>%
+  mutate(chev = str_detect(name,"chev")) %>%
+  mutate(datsun = str_detect(name,"datsun")) %>%
+  mutate(dodge = str_detect(name,"dodge")) %>%
+  mutate(ford = str_detect(name,"ford")) %>%
+  mutate(honda = str_detect(name,"honda")) %>%
+  mutate(mazda = str_detect(name,"mazda")) %>%
+  mutate(plym = str_detect(name,"plym")) %>%
+  mutate(toyota = str_detect(name,"toyota"))
+
+auto_feat <- na.omit(auto_all) %>%
+  select(mpg,amc,buick,chev,datsun,dodge,ford,honda,mazda,plym,toyota)
+
+sqrt(mean((auto_feat$mpg - predict(lm(formula = mpg ~ ., data = auto_feat), newdata = auto_feat))^2))
 ```
 
-> <span style="color:red;font-weight:bold">TODO</span>: *Explain*
+> Trying to determine the mpg of these vehciles, just using 10 of the most popular 'Make's proves to be an even worse predictor than just using the 'Year' variable. I believe that this makes intuitive sense. While many like to draw anectdotal conclusions about the gas efficiency of certain 'Make's, it's logically going to be more reliant on the physical/numeric characteristics of the vehicle.
 
 # Classification
 
@@ -73,10 +94,28 @@ names(Auto)
 - Report on your Kappa value.
 
 ```{r classification}
-# Your code here
+control = trainControl(method = "cv", number = 5)
+
+auto_knn = auto_all %>%
+  filter(chev == 1 | honda == 1) %>%
+  mutate(origin = as.factor(origin)) %>% #This will get us Chevy vs Honda easily
+  select(mpg, cylinders, displacement, horsepower, weight, acceleration, year, origin)
+
+split <- createDataPartition(auto_knn$origin, p = 0.8, list = FALSE)
+train_knn <- auto_knn[split, ]
+test_knn <- auto_knn[-split, ]
+
+fit_knn = train(origin ~ .,
+                data = train_knn, 
+                method = "knn",
+                tuneLength = 15,
+                metric = "Kappa",
+                trControl = control)
+
+confusionMatrix(predict(fit_knn, test_knn),factor(test_knn$origin))
 ```
 
-> <span style="color:red;font-weight:bold">TODO</span>: *Explain*
+> I used the Origin feature as the predictor for this model, because once it was filtered down to just Chevy and Honda vehicles, it should be immediately apparent to know that all Chevy's would have a Origin of 1 (United States) and that all Hondas would have an origin of 3 (Japan). The first time I ran this data, it returned a Kappa value of 1, meaning I was able to fully predict whether a car was a Honda or a Chevy, all on the first try. This seemed rather dubious to me, so I ran this code 5-10 more times, and got an average Kappa value of ~0.62. While this isn't a terrible Kappa value to have, I believe the results are hard to rely on, due to the small number of observations in our dataset. After filtering and splitting the data, we are only predicting 11 observations in our test dataset. While I chose KNN for its efficiency over smaller datasets, I believe that this dataset is just too small to have a reliable result.
 
 # Binary Classification
 
@@ -85,34 +124,35 @@ names(Auto)
 - Display and comment on an ROC curve.
 
 ```{r binary classification}
-# Your code here
+auto_bin = auto_all %>%
+  mutate(origin = as.factor(origin)) %>%
+  mutate(honda = as.factor(honda)) %>%
+  select(mpg, cylinders, displacement, horsepower, weight, acceleration, year, origin, honda)
+
+split2 <- createDataPartition(auto_bin$honda, p = 0.8, list = FALSE)
+train_bin <- auto_bin[split2, ]
+test_bin <- auto_bin[-split2, ]
+
+weight_train <- train_bin %>% 
+  mutate(weights=case_when(
+    honda == 1 ~ 29.15,
+    honda == 0 ~ 1))
+
+fit_bin = train(honda ~ .,
+               data = train_bin, 
+               method = "glm",
+               family = "binomial",
+               trControl = control)
+
+confusionMatrix(predict(fit_bin, test_bin),factor(test_bin$honda))
+
+
+
+prob <- predict(fit_bin, newdata = test_bin, type = "prob")[,2]
+myRoc <- roc(test_bin$honda, prob)
+
+plot(myRoc)
 ```
 
-> <span style="color:red;font-weight:bold">TODO</span>: *Explain*
+> As with our KNN model, I believe I've once again stumbled on dubious results. While this dataset is certainly larger (since we didn't filter down), it still only has 400 observations. Of which, only 13 belong to Honda vehicles. The imbalance of the data makes it extremely hard to ensure that there are enough Hondas in the training and test datasets to produce meaningful results. More often than not, I get a Kappa value of 0, which often happens because I only have ~2 Honda observations in my test dataset to guess correctly. Looking at the ROC curve, we almost always see greater than 90% of the data represented under the curve. It's extremely easy to do so when virtually every observation is in one of the two buckets. Since the release of this dataset, the automotive industry has expanded massively. Running these models over a more complete dataset, with thousands more observations would likely produce more reliable RMSEs, Kappa values, and ROC curves (rather than ROC staircases).
 
-# Ethics
-
-- Based on your analysis, comment on the [Clean Air Act of 1970 and Ammendments of 1977](https://www.epa.gov/clean-air-act-overview/evolution-clean-air-act)
-- Discuss the civic reposibilities of data scientists for:
-    - Big Data and Human-Centered Computing
-    - Democratic Institutions
-    - Climate Change
-- Provide at least one statistical measure for each, such as a RMSE, Kappa value, or ROC curve.
-
-> <span style="color:red;font-weight:bold">TODO</span>: Big Data and Human-Centered Computing
-
-```{r big data}
-# Your code here
-```
-
-> <span style="color:red;font-weight:bold">TODO</span>: Democratic Institutions
-
-```{r democracy}
-# Your code here
-```
-
-> <span style="color:red;font-weight:bold">TODO</span>: Climate Change
-
-```{r climate}
-# Your code here
-```
